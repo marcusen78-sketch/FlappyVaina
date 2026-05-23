@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# wasm binaries (copied from node_modules at install time)
+/public/wasm/
