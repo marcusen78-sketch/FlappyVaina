@@ -11,3 +11,10 @@ html, body {
   overflow: hidden;
   background: #ffffff;
 }
+
+@layer base {
+  @keyframes cloud-drift {
+    0% { transform: translateX(-30vw); }
+    100% { transform: translateX(130vw); }
+  }
+}
