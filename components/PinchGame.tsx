@@ -6,13 +6,15 @@ import { HandLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import {
   createHandsPool,
   updateHandsPool,
-  addHandLighting,
   type Landmark,
   type HandModel,
 } from "@/lib/hand3d-procedural";
+import { createGameScene, setupGameLighting, setupGameCamera, resetGameScene, type GameScene } from "@/lib/game-scene";
+import { PinchDetector } from "@/lib/pinch-detector";
+import { GameEngine, type GameState } from "@/lib/game-logic";
 
 // ---------------------------------------------------------------------------
-// Temporal smoothing (EMA)
+// Smoothing
 // ---------------------------------------------------------------------------
 
 const EMA_ALPHA = 0.55;
@@ -50,14 +52,17 @@ class LandmarkSmoother {
 }
 
 // ---------------------------------------------------------------------------
-// Map MediaPipe normalised coords → Three.js world units
+// Map MediaPipe normalized coords → scene space (mirrored X for natural feel)
 // ---------------------------------------------------------------------------
 
+// Map landmarks so hand range aligns with game objects.
+// Objects live at x:[-1.2, -0.4] (left table) to [0.4, 1.2] (right table), y≈-0.5
+// MediaPipe gives x,y in [0,1]. We map so the hand naturally covers the game area.
 function mapLandmarks(raw: { x: number; y: number; z: number }[]): Landmark[] {
   return raw.map((lm) => ({
-    x: -(lm.x - 0.5) * 3.5,
-    y: -(lm.y - 0.5) * 2.5,
-    z: -lm.z * 1.0,
+    x: -(lm.x - 0.5) * 3.0,
+    y: -(lm.y - 0.5) * 2.0 - 0.3,
+    z: -lm.z * 0.5,
   }));
 }
 
@@ -65,10 +70,11 @@ function mapLandmarks(raw: { x: number; y: number; z: number }[]): Landmark[] {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function HandTracker() {
+export default function PinchGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState("Cargando...");
   const [ready, setReady] = useState(false);
+  const [gameState, setGameState] = useState<GameState | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -77,27 +83,35 @@ export default function HandTracker() {
 
     // Scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xffffff);
-
-    const camera = new THREE.PerspectiveCamera(
-      50, window.innerWidth / window.innerHeight, 0.01, 100
-    );
-    camera.position.set(0, 0, 3);
-    camera.lookAt(0, 0, 0);
+    const camera = setupGameCamera();
+    setupGameLighting(scene);
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    addHandLighting(scene);
+    // Game scene (tables + objects)
+    const gameSceneData = createGameScene(scene);
 
-    // Hand pool (loaded async inside start())
+    // Game engine
+    const gameEngine = new GameEngine(gameSceneData);
+
+    // Pinch detector
+    const pinchDetector = new PinchDetector({
+      pinchThreshold: 0.08,
+      releaseThreshold: 0.12,
+    });
+
+    // Hand tracking pool
     let pool: HandModel[] = [];
-
     const smoother = new LandmarkSmoother();
 
     // Render loop
     let animId: number;
+    let lastTime = performance.now();
+
     function animate() {
       if (disposed) return;
       animId = requestAnimationFrame(animate);
@@ -122,17 +136,14 @@ export default function HandTracker() {
     let results: ReturnType<HandLandmarker["detectForVideo"]> | null = null;
 
     async function start() {
-      setStatus("Cargando modelo 3D...");
-
+      setStatus("Cargando mano 3D...");
       pool = await createHandsPool(2);
       pool.forEach((h) => scene.add(h.root));
 
       setStatus("Cargando modelo de detección...");
-
       const vision = await FilesetResolver.forVisionTasks("/wasm");
 
       setStatus("Inicializando detector...");
-
       const handLandmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath:
@@ -147,7 +158,6 @@ export default function HandTracker() {
       });
 
       setStatus("Solicitando cámara...");
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
         audio: false,
@@ -163,6 +173,8 @@ export default function HandTracker() {
       function detect() {
         if (disposed) return;
         const now = performance.now();
+        const deltaTime = (now - lastTime) / 1000;
+        lastTime = now;
 
         if (video.currentTime !== lastVideoTime && video.readyState >= 2) {
           lastVideoTime = video.currentTime;
@@ -173,6 +185,11 @@ export default function HandTracker() {
           const mapped = results.landmarks.map(mapLandmarks);
           const smoothed = smoother.smooth(mapped);
           updateHandsPool(pool, smoothed);
+
+          // Use first hand for pinch detection
+          const pinchResult = pinchDetector.update(smoothed[0]);
+          const state = gameEngine.update(pinchResult, deltaTime);
+          setGameState(state);
         } else {
           updateHandsPool(pool, []);
         }
@@ -184,7 +201,7 @@ export default function HandTracker() {
 
     start().catch((err) => {
       const msg = err instanceof Error ? err.message : JSON.stringify(err);
-      console.error("HandTracker error:", err);
+      console.error("PinchGame error:", err);
       setStatus("Error: " + msg);
     });
 
@@ -202,9 +219,38 @@ export default function HandTracker() {
   return (
     <div className="relative w-screen h-screen bg-white">
       <canvas ref={canvasRef} className="block w-full h-full" />
+
+      {/* Loading overlay */}
       {!ready && (
         <div className="absolute inset-0 flex items-center justify-center bg-white">
           <p className="text-gray-400 text-lg">{status}</p>
+        </div>
+      )}
+
+      {/* HUD */}
+      {ready && gameState && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-4">
+          <span className="text-gray-500 text-sm font-light tracking-wide">
+            {gameState.score} / {gameState.totalObjects}
+          </span>
+        </div>
+      )}
+
+      {/* Success message */}
+      {gameState?.isComplete && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="bg-white/90 px-8 py-4 rounded-xl shadow-sm">
+            <p className="text-gray-700 text-lg font-light">Completado</p>
+          </div>
+        </div>
+      )}
+
+      {/* Instruction hint */}
+      {ready && gameState && !gameState.isComplete && gameState.score === 0 && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
+          <p className="text-gray-300 text-sm font-light">
+            Pellizca para agarrar — suelta en la otra mesa
+          </p>
         </div>
       )}
     </div>

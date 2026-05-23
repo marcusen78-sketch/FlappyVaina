@@ -6,13 +6,15 @@ import { HandLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import {
   createHandsPool,
   updateHandsPool,
-  addHandLighting,
   type Landmark,
   type HandModel,
 } from "@/lib/hand3d-procedural";
+import { createLabScene, setupLabLighting, setupLabCamera, type LabScene } from "@/lib/lab-scene";
+import { PinchDetector } from "@/lib/pinch-detector";
+import { LabEngine, type LabGameState } from "@/lib/lab-logic";
 
 // ---------------------------------------------------------------------------
-// Temporal smoothing (EMA)
+// Smoothing
 // ---------------------------------------------------------------------------
 
 const EMA_ALPHA = 0.55;
@@ -50,14 +52,14 @@ class LandmarkSmoother {
 }
 
 // ---------------------------------------------------------------------------
-// Map MediaPipe normalised coords → Three.js world units
+// Landmark mapping (mirrored X, offset Y down toward table level)
 // ---------------------------------------------------------------------------
 
 function mapLandmarks(raw: { x: number; y: number; z: number }[]): Landmark[] {
   return raw.map((lm) => ({
-    x: -(lm.x - 0.5) * 3.5,
-    y: -(lm.y - 0.5) * 2.5,
-    z: -lm.z * 1.0,
+    x: -(lm.x - 0.5) * 3.0,
+    y: -(lm.y - 0.5) * 2.0 - 0.3,
+    z: -lm.z * 0.5,
   }));
 }
 
@@ -65,10 +67,11 @@ function mapLandmarks(raw: { x: number; y: number; z: number }[]): Landmark[] {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function HandTracker() {
+export default function LabGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState("Cargando...");
   const [ready, setReady] = useState(false);
+  const [labState, setLabState] = useState<LabGameState | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -77,27 +80,32 @@ export default function HandTracker() {
 
     // Scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xffffff);
-
-    const camera = new THREE.PerspectiveCamera(
-      50, window.innerWidth / window.innerHeight, 0.01, 100
-    );
-    camera.position.set(0, 0, 3);
-    camera.lookAt(0, 0, 0);
+    const camera = setupLabCamera();
+    setupLabLighting(scene);
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    addHandLighting(scene);
+    // Lab scene
+    const labSceneData = createLabScene(scene);
 
-    // Hand pool (loaded async inside start())
+    // Game engine
+    const labEngine = new LabEngine(labSceneData);
+
+    // Pinch detector
+    const pinchDetector = new PinchDetector();
+
+    // Hand
     let pool: HandModel[] = [];
-
     const smoother = new LandmarkSmoother();
 
     // Render loop
     let animId: number;
+    let lastTime = performance.now();
+
     function animate() {
       if (disposed) return;
       animId = requestAnimationFrame(animate);
@@ -112,7 +120,7 @@ export default function HandTracker() {
     }
     window.addEventListener("resize", onResize);
 
-    // MediaPipe
+    // Video
     const video = document.createElement("video");
     video.setAttribute("playsinline", "");
     video.setAttribute("autoplay", "");
@@ -122,17 +130,14 @@ export default function HandTracker() {
     let results: ReturnType<HandLandmarker["detectForVideo"]> | null = null;
 
     async function start() {
-      setStatus("Cargando modelo 3D...");
-
+      setStatus("Cargando mano 3D...");
       pool = await createHandsPool(2);
       pool.forEach((h) => scene.add(h.root));
 
       setStatus("Cargando modelo de detección...");
-
       const vision = await FilesetResolver.forVisionTasks("/wasm");
 
       setStatus("Inicializando detector...");
-
       const handLandmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath:
@@ -147,7 +152,6 @@ export default function HandTracker() {
       });
 
       setStatus("Solicitando cámara...");
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
         audio: false,
@@ -163,6 +167,8 @@ export default function HandTracker() {
       function detect() {
         if (disposed) return;
         const now = performance.now();
+        const deltaTime = (now - lastTime) / 1000;
+        lastTime = now;
 
         if (video.currentTime !== lastVideoTime && video.readyState >= 2) {
           lastVideoTime = video.currentTime;
@@ -173,6 +179,10 @@ export default function HandTracker() {
           const mapped = results.landmarks.map(mapLandmarks);
           const smoothed = smoother.smooth(mapped);
           updateHandsPool(pool, smoothed);
+
+          const pinchResult = pinchDetector.update(smoothed[0]);
+          const state = labEngine.update(pinchResult, deltaTime);
+          setLabState(state);
         } else {
           updateHandsPool(pool, []);
         }
@@ -184,7 +194,7 @@ export default function HandTracker() {
 
     start().catch((err) => {
       const msg = err instanceof Error ? err.message : JSON.stringify(err);
-      console.error("HandTracker error:", err);
+      console.error("LabGame error:", err);
       setStatus("Error: " + msg);
     });
 
@@ -202,9 +212,48 @@ export default function HandTracker() {
   return (
     <div className="relative w-screen h-screen bg-white">
       <canvas ref={canvasRef} className="block w-full h-full" />
+
+      {/* Loading */}
       {!ready && (
         <div className="absolute inset-0 flex items-center justify-center bg-white">
           <p className="text-gray-400 text-lg">{status}</p>
+        </div>
+      )}
+
+      {/* HUD */}
+      {ready && labState && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-6">
+          <span className="text-gray-600 text-sm font-light tracking-wide">
+            {labState.score} / {labState.totalBalls}
+          </span>
+          {labState.errors > 0 && (
+            <span className="text-red-300 text-sm font-light">
+              {labState.errors} {labState.errors === 1 ? "error" : "errores"}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Completion */}
+      {labState?.isComplete && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="bg-white/95 px-10 py-6 rounded-2xl shadow-sm text-center">
+            <p className="text-gray-700 text-xl font-light mb-2">Completado</p>
+            <p className="text-gray-400 text-sm">
+              {labState.errors === 0
+                ? "Sin errores"
+                : `${labState.errors} ${labState.errors === 1 ? "error" : "errores"}`}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Instruction */}
+      {ready && labState && !labState.isComplete && labState.score === 0 && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
+          <p className="text-gray-300 text-sm font-light">
+            Pellizca cada bola y sueltala en el tubo de su color
+          </p>
         </div>
       )}
     </div>
