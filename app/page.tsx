@@ -14,12 +14,12 @@ export default function Home() {
       </div>
 
       {/* Game Cards Grid */}
-      <div className="flex flex-col md:flex-row items-center justify-center gap-10 md:gap-16 max-w-5xl w-full">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-10 max-w-5xl w-full px-8">
         
         {/* Card 1: Pinch Game */}
         <Link
           href="/game"
-          className="group flex flex-col items-center justify-center w-48 h-48 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.02)] hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+          className="group flex flex-col items-center justify-center w-full aspect-square rounded-2xl bg-white border border-slate-100 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.02)] hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
         >
           <div className="text-slate-300 group-hover:text-indigo-500 transition-colors duration-300 mb-6">
             <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -34,7 +34,7 @@ export default function Home() {
         {/* Card 2: Constelacion Memoria */}
         <Link
           href="/lab"
-          className="group flex flex-col items-center justify-center w-48 h-48 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.02)] hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+          className="group flex flex-col items-center justify-center w-full aspect-square rounded-2xl bg-white border border-slate-100 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.02)] hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
         >
           <div className="text-slate-300 group-hover:text-indigo-500 transition-colors duration-300 mb-6">
             <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -49,7 +49,7 @@ export default function Home() {
         {/* Card 3: Flappy Plane */}
         <Link
           href="/flappy"
-          className="group flex flex-col items-center justify-center w-48 h-48 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.02)] hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+          className="group flex flex-col items-center justify-center w-full aspect-square rounded-2xl bg-white border border-slate-100 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.02)] hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
         >
           <div className="text-slate-300 group-hover:text-sky-500 transition-colors duration-300 mb-6">
             <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -58,6 +58,21 @@ export default function Home() {
           </div>
           <h3 className="text-xs font-light text-slate-500 tracking-widest uppercase text-center">
             Avión
+          </h3>
+        </Link>
+
+        {/* Card 4: Water Pouring */}
+        <Link
+          href="/water"
+          className="group flex flex-col items-center justify-center w-full aspect-square rounded-2xl bg-white border border-slate-100 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.02)] hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+        >
+          <div className="text-slate-300 group-hover:text-blue-500 transition-colors duration-300 mb-6">
+            <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 3v1m0 16a4 4 0 100-8 4 4 0 000 8z" />
+            </svg>
+          </div>
+          <h3 className="text-xs font-light text-slate-500 tracking-widest uppercase text-center">
+            Agua
           </h3>
         </Link>
 
