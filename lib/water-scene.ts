@@ -254,23 +254,14 @@ export class WaterSceneManager {
   }
 
   update(state: WaterState, pitcherRotZ: number) {
-    // Hide/Show elements based on phase
-    this.tap.visible = (state.phase === "filling");
-    const showGlassAndTable = (state.phase === "pouring" || state.phase === "success" || state.phase === "gameover");
-    this.glass.visible = showGlassAndTable;
-    this.table.visible = showGlassAndTable;
+    // Show elements based on phase (Unified scene, always visible)
+    this.tap.visible = true;
+    this.glass.visible = true;
+    this.table.visible = true;
 
-    // Update Pitcher
-    if (state.phase === "filling") {
-      this.pitcher.position.set(0, 0, 0);
-      this.pitcher.rotation.z = pitcherRotZ;
-    } else if (state.phase === "pouring") {
-      this.pitcher.position.set(-0.1, 0.5, 0); // Center slightly to the left
-      this.pitcher.rotation.z = pitcherRotZ;
-    } else {
-      this.pitcher.position.set(0, 0, 0);
-      this.pitcher.rotation.z = 0;
-    }
+    // Update Pitcher Position (Permanent position across all phases)
+    this.pitcher.position.set(-0.1, 0.5, 0);
+    this.pitcher.rotation.z = pitcherRotZ;
 
     // Update Internal Water Volumes
     // Water Volume
@@ -289,8 +280,9 @@ export class WaterSceneManager {
     this.glassWater.scale.y = gVolRatio;
     this.glassWater.position.y = -0.19 + (0.38 * gVolRatio) / 2;
 
-    // Adjust glass width based on state
+    // Adjust glass width based on state and apply sliding X position
     this.glass.scale.set(state.glassWidth / 0.3, 1, state.glassWidth / 0.3);
+    this.glass.position.set(state.glassX, -1.0, 0);
 
     // Update Particles
     let activeCount = 0;

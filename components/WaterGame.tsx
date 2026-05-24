@@ -143,7 +143,15 @@ export default function WaterGame() {
 
         if (results && results.landmarks && results.landmarks.length > 0) {
           const pronationRes = detector.update(results.landmarks[0]);
-          pitcherRotRef.current = pronationRes.pitcherRotationZ;
+          const targetRot = pronationRes.pitcherRotationZ;
+          const currentRot = pitcherRotRef.current;
+          
+          // Shortest path angle LERP for smooth, jitter-free rotation
+          let diff = targetRot - currentRot;
+          while (diff > Math.PI) diff -= 2 * Math.PI;
+          while (diff < -Math.PI) diff += 2 * Math.PI;
+          
+          pitcherRotRef.current = currentRot + diff * 0.15; // 0.15 is the smoothing factor
         }
 
         requestAnimationFrame(detect);
@@ -212,6 +220,10 @@ export default function WaterGame() {
               </Link>
             </div>
             <div className="bg-white/80 backdrop-blur-md px-6 py-3 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-6">
+              <div className="flex flex-col items-end border-r border-slate-200 pr-6">
+                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Ronda</span>
+                <span className="text-2xl font-light text-slate-700 leading-none">{engineState.round} <span className="text-sm text-slate-400">/ 3</span></span>
+              </div>
               {engineState.phase === "pouring" && (
                 <div className="flex flex-col items-end border-r border-slate-200 pr-6">
                   <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Tiempo</span>
@@ -227,32 +239,24 @@ export default function WaterGame() {
             </div>
           </div>
 
-          {/* Bottom Bar: Instructions */}
+          {/* Bottom Bar / Notifications */}
           <div className="w-full max-w-xl mx-auto text-center pointer-events-auto">
-            {engineState.phase === "filling" && (
-              <div className="bg-white/90 backdrop-blur-md py-4 px-8 rounded-3xl shadow-lg border border-slate-100 animate-in slide-in-from-bottom-10">
-                <span className="block text-indigo-600 text-xs font-bold uppercase tracking-widest mb-1">
-                  FASE 1: Supinación
-                </span>
-                <span className="text-lg font-medium text-slate-700">Palma hacia arriba para llenar la jarra</span>
+            {engineState.phase === "waiting" && (
+              <div className="bg-white/90 backdrop-blur-md py-4 px-12 inline-block rounded-full shadow-lg border border-slate-100 animate-in fade-in zoom-in-95 duration-300">
+                <span className="text-xl font-medium tracking-wide text-slate-700">¡Gira la jarra para llenarla!</span>
               </div>
             )}
             
             {engineState.phase === "pouring" && (
               <div className="bg-white/90 backdrop-blur-md py-4 px-8 rounded-3xl shadow-lg border border-slate-100 animate-in slide-in-from-bottom-10">
-                <span className="block text-sky-500 text-xs font-bold uppercase tracking-widest mb-1">
-                  FASE 2: Pronación
-                </span>
-                <span className="text-lg font-medium text-slate-700 block mb-2">Gira la palma hacia abajo para llenar el vaso</span>
-                
-                <div className="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden border border-slate-200">
+                <div className="w-full bg-slate-100 rounded-full h-2 mt-1 overflow-hidden border border-slate-200">
                   <div 
                     className="bg-emerald-400 h-2 rounded-full transition-all duration-75 ease-linear"
-                    style={{ width: `${Math.min(100, (engineState.stabilityTimer / 3.0) * 100)}%` }}
+                    style={{ width: `${Math.min(100, (engineState.stabilityTimer / 1.0) * 100)}%` }}
                   ></div>
                 </div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 mt-2 block">
-                  {engineState.stabilityTimer > 0 ? "¡Mantén la posición!" : "Llena entre 80% y 95%"}
+                  {engineState.stabilityTimer > 0 ? "¡Mantén la posición!" : "Llena entre 80% y 100%"}
                 </span>
               </div>
             )}
@@ -265,12 +269,12 @@ export default function WaterGame() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <h2 className="text-2xl font-medium text-slate-800 mb-2">¡Nivel Completado!</h2>
+                <h2 className="text-2xl font-medium text-slate-800 mb-2">¡Partida Completada!</h2>
                 <button
                   onClick={() => engineRef.current?.startLevel()}
                   className="mt-6 w-full py-4 bg-slate-800 hover:bg-teal-500 text-white rounded-2xl font-medium tracking-wide transition-colors"
                 >
-                  Siguiente Vaso
+                  Jugar de Nuevo
                 </button>
               </div>
             )}
@@ -284,7 +288,7 @@ export default function WaterGame() {
                 </div>
                 <h2 className="text-2xl font-medium text-slate-800 mb-2">Agua Derramada</h2>
                 <button
-                  onClick={handleRestart}
+                  onClick={() => engineRef.current?.startLevel()}
                   className="mt-6 w-full py-4 bg-slate-800 hover:bg-indigo-600 text-white rounded-2xl font-medium tracking-wide transition-colors"
                 >
                   Volver a Intentarlo

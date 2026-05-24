@@ -1,4 +1,4 @@
-export type WaterPhase = "ready" | "filling" | "pouring" | "success" | "gameover";
+export type WaterPhase = "ready" | "waiting" | "filling" | "pouring" | "sliding" | "success" | "gameover";
 
 export interface Particle {
   id: number;
@@ -22,6 +22,8 @@ export interface WaterState {
   particles: Particle[];
   timeLeft: number;
   stabilityTimer: number;
+  round: number;
+  waitingTimer: number;
 }
 
 export class WaterEngine {
@@ -54,16 +56,26 @@ export class WaterEngine {
       particles: [],
       timeLeft: 15,
       stabilityTimer: 0,
+      round: 1,
+      waitingTimer: 0,
     };
   }
 
   startLevel() {
-    this.state.phase = "filling";
+    this.state.score = 0;
+    this.state.round = 1;
+    this.startRound();
+  }
+
+  startRound() {
+    this.state.phase = "waiting";
+    this.state.waitingTimer = 2.0;
     this.state.pitcherVolume = 0;
     this.state.glassCurrentVolume = 0;
     this.state.spilledDrops = 0;
     this.state.glassTargetVolume = 0.4 + Math.random() * 0.5; // Random glass size
     this.state.glassWidth = 0.2 + Math.random() * 0.2; // Random glass width
+    this.state.glassX = -0.8;
     this.state.timeLeft = 15;
     this.state.stabilityTimer = 0;
     this.deactivateAllParticles();
@@ -76,6 +88,15 @@ export class WaterEngine {
 
     this.emitTimer -= deltaTime;
 
+    // Phase 0: Waiting for user to be ready
+    if (this.state.phase === "waiting") {
+      this.state.waitingTimer -= deltaTime;
+      if (this.state.waitingTimer <= 0) {
+        this.state.phase = "filling";
+      }
+      return this.getState();
+    }
+
     // Phase 1: Filling from Tap
     if (this.state.phase === "filling") {
       // Tap emits from top center
@@ -84,12 +105,13 @@ export class WaterEngine {
         this.emitTimer = this.emitRate;
       }
 
-      // Check if pitcher is upright to catch
-      const isUpright = Math.abs(pitcherRotationZ) < 0.3;
+      // Check if pitcher is upright to catch (generous ~45 degree allowance)
+      const isUpright = Math.abs(pitcherRotationZ) < 0.8;
 
       this.updateParticles(deltaTime, (p) => {
-        // Pitcher collision box (approx center bottom)
-        if (isUpright && p.x > -0.2 && p.x < 0.2 && p.y < -0.2 && p.y > -0.5) {
+        // Pitcher is at (-0.1, 0.5), bottom is around y=0.15.
+        // Catch box adjusted to new position.
+        if (isUpright && p.x > -0.3 && p.x < 0.2 && p.y < 0.4 && p.y > 0.0) {
           p.active = false; // Caught!
           this.state.pitcherVolume += 0.01;
           if (this.state.pitcherVolume >= 1.0) {
@@ -149,11 +171,11 @@ export class WaterEngine {
         const halfW = this.state.glassWidth / 2;
         // Only interact if falling down
         if (p.vy <= 0 && p.x > this.state.glassX - halfW && p.x < this.state.glassX + halfW && p.y < -0.8 && p.y > -1.2) {
-          if (this.state.glassCurrentVolume < this.state.glassTargetVolume * 0.95) {
+          if (this.state.glassCurrentVolume < this.state.glassTargetVolume * 1.0) {
             p.active = false; // Caught in glass!
             this.state.glassCurrentVolume += 0.005;
           } else {
-            // Glass exceeds 95%! Splash and Fail!
+            // Glass exceeds 100%! Splash and Fail!
             p.y = -0.8; 
             p.vy = 0.4 + Math.random() * 0.4;
             p.vx = (Math.random() - 0.5) * 1.5;
@@ -168,12 +190,12 @@ export class WaterEngine {
       const fillRatio = this.state.glassCurrentVolume / this.state.glassTargetVolume;
       const particlesSettled = this.getActiveParticles() === 0;
 
-      // Evaluate Stability Win Condition
-      if (fillRatio >= 0.8 && fillRatio <= 0.95) {
-        if (tiltMagnitude < 0.2 && !isPouring && particlesSettled) {
+      // Evaluate Stability Win Condition (No tilt required, just stop pouring for 1 second)
+      if (fillRatio >= 0.8 && fillRatio <= 1.0) {
+        if (!isPouring && particlesSettled) {
           this.state.stabilityTimer += deltaTime;
-          if (this.state.stabilityTimer >= 3.0) {
-            this.state.phase = "success";
+          if (this.state.stabilityTimer >= 1.0) {
+            this.state.phase = "sliding";
             this.state.score++;
           }
         } else {
@@ -186,6 +208,19 @@ export class WaterEngine {
       // Early fail if out of water and under 80%
       if (this.state.pitcherVolume <= 0 && particlesSettled && fillRatio < 0.8) {
          this.state.phase = "gameover";
+      }
+    }
+
+    // Phase 3: Sliding Glass
+    if (this.state.phase === "sliding") {
+      this.state.glassX -= deltaTime * 3.0; // Slide speed
+      if (this.state.glassX < -4.0) {
+        if (this.state.round >= 3) {
+          this.state.phase = "success";
+        } else {
+          this.state.round++;
+          this.startRound();
+        }
       }
     }
 

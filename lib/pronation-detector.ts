@@ -23,8 +23,8 @@ export class PronationDetector {
     // Palma (Supination): index is right of pinky -> dx > 0, dy ~ 0 -> angleRaw is 0.
     const angleRaw = Math.atan2(dy, dx);
     
-    // We map Dorso to Upright (0), Profile to Tilt Left 90 (PI/2), and Palma to Tilt Left 180 (PI).
-    let pitcherRotationZ = angleRaw - Math.PI;
+    // We map Profile (-PI/2) to Upright (0), and Palma (0) to Tilt Left (PI/2).
+    let pitcherRotationZ = angleRaw + Math.PI / 2;
 
     // Normalize rotation strictly to [-PI, PI]
     while (pitcherRotationZ > Math.PI) pitcherRotationZ -= 2 * Math.PI;
