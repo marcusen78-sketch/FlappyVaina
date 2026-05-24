@@ -146,12 +146,22 @@ export default function WaterGame() {
           const targetRot = pronationRes.pitcherRotationZ;
           const currentRot = pitcherRotRef.current;
           
-          // Shortest path angle LERP for smooth, jitter-free rotation
+          // Shortest path angle
           let diff = targetRot - currentRot;
           while (diff > Math.PI) diff -= 2 * Math.PI;
           while (diff < -Math.PI) diff += 2 * Math.PI;
           
-          pitcherRotRef.current = currentRot + diff * 0.15; // 0.15 is the smoothing factor
+          // 1. Heavy LERP step (0.08 factor instead of 0.15 for extra weight)
+          let step = diff * 0.08;
+          
+          // 2. Velocity Clamp (Glitch Rejection)
+          // Humans can't rotate their wrist 180 degrees in 1 frame.
+          // Max angular velocity allowed per frame: ~0.06 radians (approx 3.5 degrees/frame)
+          const maxStep = 0.06;
+          if (step > maxStep) step = maxStep;
+          if (step < -maxStep) step = -maxStep;
+          
+          pitcherRotRef.current = currentRot + step;
         }
 
         requestAnimationFrame(detect);

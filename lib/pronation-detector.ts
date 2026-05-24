@@ -30,8 +30,10 @@ export class PronationDetector {
     while (pitcherRotationZ > Math.PI) pitcherRotationZ -= 2 * Math.PI;
     while (pitcherRotationZ <= -Math.PI) pitcherRotationZ += 2 * Math.PI;
 
-    // Smooth out tiny jitters near upright (0)
-    if (Math.abs(pitcherRotationZ) < 0.15) {
+    // Generous deadzone for upright (Profile) position.
+    // When the hand is in profile, fingers occlude each other causing CV noise.
+    // A 30-degree (0.52 rad) deadzone ensures the pitcher stays perfectly vertical.
+    if (Math.abs(pitcherRotationZ) < 0.52) {
       pitcherRotationZ = 0;
     }
 
