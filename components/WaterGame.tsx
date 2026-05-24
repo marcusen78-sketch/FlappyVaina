@@ -79,7 +79,7 @@ export default function WaterGame() {
       const deltaTime = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
 
-      const updated = engine.update(pitcherRotRef.current, isPouringRef.current, deltaTime);
+      const updated = engine.update(pitcherRotRef.current, deltaTime);
       setEngineState(updated);
       sceneManager.update(updated, pitcherRotRef.current);
 
@@ -144,7 +144,6 @@ export default function WaterGame() {
         if (results && results.landmarks && results.landmarks.length > 0) {
           const pronationRes = detector.update(results.landmarks[0]);
           pitcherRotRef.current = pronationRes.pitcherRotationZ;
-          isPouringRef.current = pronationRes.isPouring;
         }
 
         requestAnimationFrame(detect);
@@ -212,7 +211,15 @@ export default function WaterGame() {
                 </svg>
               </Link>
             </div>
-            <div className="bg-white/80 backdrop-blur-md px-6 py-3 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+            <div className="bg-white/80 backdrop-blur-md px-6 py-3 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-6">
+              {engineState.phase === "pouring" && (
+                <div className="flex flex-col items-end border-r border-slate-200 pr-6">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Tiempo</span>
+                  <span className={`text-2xl font-light leading-none ${engineState.timeLeft <= 5 ? 'text-red-500 font-bold animate-pulse' : 'text-slate-700'}`}>
+                    {Math.max(0, Math.ceil(engineState.timeLeft))}s
+                  </span>
+                </div>
+              )}
               <div className="flex flex-col items-end">
                 <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Puntuación</span>
                 <span className="text-2xl font-light text-slate-700 leading-none">{engineState.score}</span>
@@ -236,7 +243,17 @@ export default function WaterGame() {
                 <span className="block text-sky-500 text-xs font-bold uppercase tracking-widest mb-1">
                   FASE 2: Pronación
                 </span>
-                <span className="text-lg font-medium text-slate-700">Gira la palma hacia abajo para llenar el vaso</span>
+                <span className="text-lg font-medium text-slate-700 block mb-2">Gira la palma hacia abajo para llenar el vaso</span>
+                
+                <div className="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden border border-slate-200">
+                  <div 
+                    className="bg-emerald-400 h-2 rounded-full transition-all duration-75 ease-linear"
+                    style={{ width: `${Math.min(100, (engineState.stabilityTimer / 3.0) * 100)}%` }}
+                  ></div>
+                </div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 mt-2 block">
+                  {engineState.stabilityTimer > 0 ? "¡Mantén la posición!" : "Llena entre 80% y 95%"}
+                </span>
               </div>
             )}
 
