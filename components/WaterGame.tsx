@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 import { PronationDetector } from "@/lib/pronation-detector";
+import { SessionLogger } from "@/lib/telemetry/datalogger";
+import { BiomechanicsDSP } from "@/lib/telemetry/biomechanics";
 import { WaterEngine, type WaterState } from "@/lib/water-logic";
 import { WaterSceneManager } from "@/lib/water-scene";
 import Link from "next/link";
@@ -61,10 +63,12 @@ export default function WaterGame() {
     setEngineState(engine.getState());
 
     const detector = new PronationDetector();
+    const sessionLogger = new SessionLogger();
 
     restartTriggerRef.current = () => {
       engine.startLevel();
       setEngineState(engine.getState());
+      sessionLogger.start();
     };
 
     // 2. Render loop
@@ -79,9 +83,35 @@ export default function WaterGame() {
       const deltaTime = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
 
+      const prevState = engine.getState().phase;
       const updated = engine.update(pitcherRotRef.current, deltaTime);
       setEngineState(updated);
       sceneManager.update(updated, pitcherRotRef.current);
+
+      if (prevState !== "success" && updated.phase === "success") {
+          const frames = sessionLogger.stop();
+          const metrics = BiomechanicsDSP.processWaterMetrics(frames);
+          console.log("CLINICAL METRICS (Water):", metrics);
+          
+          try {
+            const history = JSON.parse(localStorage.getItem("clinical_metrics_water") || "[]");
+            history.push({ date: new Date().toISOString(), ...metrics });
+            localStorage.setItem("clinical_metrics_water", JSON.stringify(history));
+          } catch (e) {
+            console.error("Error saving clinical metrics:", e);
+          }
+
+          // Auto-Routing
+          if (typeof window !== "undefined") {
+            setTimeout(() => {
+              if (window.location.search.includes('mode=test')) {
+                window.location.href = '/dashboard';
+              } else {
+                window.location.href = '/';
+              }
+            }, 3500); // 3.5s delay to let the user read the success screen
+          }
+      }
 
       sceneManager.renderer.render(sceneManager.scene, sceneManager.camera);
     }
@@ -162,6 +192,18 @@ export default function WaterGame() {
           if (step < -maxStep) step = -maxStep;
           
           pitcherRotRef.current = currentRot + step;
+
+          // Passive Telemetry Logging
+          const st = engineRef.current?.getState();
+          if (st) {
+            sessionLogger.logFrame(st.phase, {
+              pitcherRotationZ: currentRot + step,
+              glassCurrentVolume: st.glassCurrentVolume,
+              glassTargetVolume: st.glassTargetVolume,
+              glassPoisonVolume: st.glassPoisonVolume,
+              round: st.round
+            });
+          }
         }
 
         requestAnimationFrame(detect);
@@ -262,8 +304,11 @@ export default function WaterGame() {
             {engineState.phase === "success" && (
               <div className="bg-white/95 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-slate-100 animate-in zoom-in-95">
                 <h2 className="text-2xl font-medium text-slate-800 mb-2">¡Sesión Completada!</h2>
-                <p className="text-slate-500 font-light">Volviendo al menú principal...</p>
-                {setTimeout(() => { window.location.href = "/" }, 2000) && null}
+                {typeof window !== 'undefined' && window.location.search.includes('mode=test') ? (
+                  <p className="text-indigo-500 font-medium">Test finalizado. Redirigiendo al Dashboard Clínico...</p>
+                ) : (
+                  <p className="text-slate-500 font-light">Volviendo al menú principal...</p>
+                )}
               </div>
             )}
           </div>

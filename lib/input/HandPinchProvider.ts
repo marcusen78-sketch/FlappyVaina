@@ -150,15 +150,18 @@ export class HandPinchProvider implements InputProvider {
 
     if (!wasPinching && this.isPinching) {
       // Pinch started → always grab the bird regardless of hand position
-      this.emit('down', SLINGSHOT_ANCHOR.x, SLINGSHOT_ANCHOR.y);
+      this.emit('down', SLINGSHOT_ANCHOR.x, SLINGSHOT_ANCHOR.y, ratio);
     } else if (wasPinching && !this.isPinching) {
       // Pinch ended → release at current drag position
       const { wx, wy } = this.dragPos(midX, midY);
-      this.emit('up', wx, wy);
+      this.emit('up', wx, wy, ratio);
     } else if (this.isPinching) {
       // Still pinching → drag relative to where pinch started
       const { wx, wy } = this.dragPos(midX, midY);
-      this.emit('move', wx, wy);
+      this.emit('move', wx, wy, ratio);
+    } else {
+      // Not pinching → hover to track continuous ratio
+      this.emit('hover', SLINGSHOT_ANCHOR.x, SLINGSHOT_ANCHOR.y, ratio);
     }
   }
 
@@ -173,8 +176,8 @@ export class HandPinchProvider implements InputProvider {
     };
   }
 
-  private emit(type: 'down' | 'move' | 'up', x: number, y: number) {
-    const event: InputEvent = { type, x, y, timestamp: performance.now() };
+  private emit(type: 'down' | 'move' | 'up' | 'hover', x: number, y: number, pinchRatio?: number) {
+    const event: InputEvent = { type, x, y, timestamp: performance.now(), pinchRatio };
     this.subscribers.forEach(cb => cb(event));
   }
 }

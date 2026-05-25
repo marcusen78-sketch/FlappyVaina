@@ -5,6 +5,8 @@ import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 import { FistDetector } from "@/lib/fist-detector";
 import { FlappyEngine, FlappyState } from "@/lib/flappy-logic";
 import { FlappySceneManager } from "@/lib/flappy-scene";
+import { SessionLogger } from "@/lib/telemetry/datalogger";
+import { BiomechanicsDSP } from "@/lib/telemetry/biomechanics";
 import Link from "next/link";
 
 const EMA_ALPHA_DEFAULT = 0.55;
@@ -126,11 +128,13 @@ export default function FlappyGame() {
     // 3. Initialize Detectors
     const fistDetector = new FistDetector();
     const smoother = new LandmarkSmoother();
+    const sessionLogger = new SessionLogger();
 
     // Trigger restart
     restartTriggerRef.current = () => {
       engine.start();
       setEngineState(engine.getState());
+      sessionLogger.start(); // Start recording telemetry
     };
 
     // Render loop
@@ -151,6 +155,28 @@ export default function FlappyGame() {
         const updated = engine.update(fistStrengthRef.current, deltaTime);
         setEngineState(updated);
         sceneManager.update(updated, deltaTime);
+        
+        // Trigger DSP processing if the game just ended
+        if (updated.status === "gameover") {
+          const frames = sessionLogger.stop();
+          const metrics = BiomechanicsDSP.processFlappyMetrics(frames);
+          console.log("CLINICAL METRICS (Flappy):", metrics);
+          
+          try {
+            const history = JSON.parse(localStorage.getItem("clinical_metrics_flappy") || "[]");
+            history.push({ date: new Date().toISOString(), ...metrics });
+            localStorage.setItem("clinical_metrics_flappy", JSON.stringify(history));
+          } catch (e) {
+            console.error("Error saving clinical metrics:", e);
+          }
+
+          // Test Mode Auto-Routing
+          if (typeof window !== "undefined" && window.location.search.includes('mode=test')) {
+            setTimeout(() => {
+              window.location.href = '/water?mode=test';
+            }, 3500); // 3.5s delay
+          }
+        }
       } else {
         // Just update decorative scenery (clouds)
         sceneManager.update(currentState, deltaTime);
@@ -222,6 +248,11 @@ export default function FlappyGame() {
           const fistRes = fistDetector.update(smoothed[0]);
           fistStrengthRef.current = fistRes.strength;
           setFistStrength(fistRes.strength);
+
+          // Passive Telemetry Logging
+          sessionLogger.logFrame(engineRef.current?.getState().status || "unknown", {
+            fistStrength: fistRes.strength
+          });
         } else {
           fistStrengthRef.current = 0;
           setFistStrength(0);
@@ -317,34 +348,46 @@ export default function FlappyGame() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 </div>
-                <h2 className="text-2xl font-light text-slate-800 tracking-wide mb-1">Juego Terminado</h2>
-                <p className="text-slate-400 text-sm font-light mb-6">Colisión detectada</p>
-                
-                <div className="grid grid-cols-2 gap-4 w-full mb-6">
-                  <div className="bg-slate-50 p-3 rounded-xl">
-                    <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Puntuación</div>
-                    <div className="text-2xl font-light text-slate-700">{engineState.score}</div>
+                {typeof window !== 'undefined' && window.location.search.includes('mode=test') ? (
+                  <div className="flex flex-col items-center w-full">
+                    <h2 className="text-2xl font-light text-slate-800 tracking-wide mb-6">Test completado</h2>
+                    <div className="w-full py-4 text-center bg-indigo-50 rounded-xl border border-indigo-100">
+                      <p className="text-indigo-600 font-semibold text-sm">Guardando métricas...</p>
+                      <p className="text-indigo-400 text-xs mt-1">Siguiente prueba en breve</p>
+                    </div>
                   </div>
-                  <div className="bg-slate-50 p-3 rounded-xl">
-                    <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Récord</div>
-                    <div className="text-2xl font-light text-slate-700">{engineState.highScore}</div>
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    <h2 className="text-2xl font-light text-slate-800 tracking-wide mb-1">Juego Terminado</h2>
+                    <p className="text-slate-400 text-sm font-light mb-6">Colisión detectada</p>
+                    
+                    <div className="grid grid-cols-2 gap-4 w-full mb-6">
+                      <div className="bg-slate-50 p-3 rounded-xl">
+                        <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Puntuación</div>
+                        <div className="text-2xl font-light text-slate-700">{engineState.score}</div>
+                      </div>
+                      <div className="bg-slate-50 p-3 rounded-xl">
+                        <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Récord</div>
+                        <div className="text-2xl font-light text-slate-700">{engineState.highScore}</div>
+                      </div>
+                    </div>
 
-                <div className="flex flex-col gap-3 w-full">
-                  <button
-                    onClick={handleRestart}
-                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium tracking-wide shadow-md shadow-indigo-100 transition-colors duration-200"
-                  >
-                    Volver a Intentarlo
-                  </button>
-                  <Link
-                    href="/"
-                    className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-medium tracking-wide transition-colors duration-200"
-                  >
-                    Volver al Menú
-                  </Link>
-                </div>
+                    <div className="flex flex-col gap-3 w-full">
+                      <button
+                        onClick={handleRestart}
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium tracking-wide shadow-md shadow-indigo-100 transition-colors duration-200"
+                      >
+                        Volver a Intentarlo
+                      </button>
+                      <Link
+                        href="/"
+                        className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-medium tracking-wide transition-colors duration-200"
+                      >
+                        Volver al Menú
+                      </Link>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}

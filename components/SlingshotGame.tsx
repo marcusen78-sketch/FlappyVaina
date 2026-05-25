@@ -10,6 +10,8 @@ import { MouseInputProvider } from '@/lib/input/MouseInput';
 import PaperPlane from './PaperPlane';
 import PaperTarget from './PaperTarget';
 import type { SlingshotState } from '@/lib/types';
+import { SessionLogger } from '@/lib/telemetry/datalogger';
+import { BiomechanicsDSP } from '@/lib/telemetry/biomechanics';
 
 const ANCHOR = { x: 450, y: 520 };
 const WORLD_W = 1280;
@@ -40,11 +42,33 @@ export default function SlingshotGame({ inputProvider }: Props) {
     let phase: SlingshotState['phase'] = 'playing';
     let levelBodies: LevelBodies;
     let slingshot: Slingshot;
+    const sessionLogger = new SessionLogger();
 
     // Per-target fall animation state: once hit, target falls with physics
     const hitTimers = new Map<Matter.Body, ReturnType<typeof setTimeout>>();
 
-    function pushState() { setGameState({ birdsLeft, score, phase }); }
+    function pushState() { 
+      setGameState({ birdsLeft, score, phase }); 
+      if (phase === 'gameover' || phase === 'win') {
+        const frames = sessionLogger.stop();
+        const metrics = BiomechanicsDSP.processSlingshotMetrics(frames);
+        console.log("CLINICAL METRICS (Slingshot):", metrics);
+        try {
+          const history = JSON.parse(localStorage.getItem("clinical_metrics_slingshot") || "[]");
+          history.push({ date: new Date().toISOString(), ...metrics });
+          localStorage.setItem("clinical_metrics_slingshot", JSON.stringify(history));
+        } catch (e) {
+          console.error("Error saving clinical metrics:", e);
+        }
+
+        // Test Mode Auto-Routing
+        if (typeof window !== "undefined" && window.location.search.includes('mode=test')) {
+          setTimeout(() => {
+            window.location.href = '/flappy?mode=test';
+          }, 3500); // 3.5s delay to let them see the Win/Loss screen
+        }
+      }
+    }
 
     const { engine, runner, render, world } = createWorld(container);
 
@@ -62,6 +86,7 @@ export default function SlingshotGame({ inputProvider }: Props) {
         div.style.transform  = 'rotateY(35deg)';
       });
       levelBodies = buildLevel(world);
+      sessionLogger.start();
       pushState();
     }
 
@@ -76,7 +101,17 @@ export default function SlingshotGame({ inputProvider }: Props) {
 
     let currentProvider = inputProvider ?? new MouseInputProvider();
     currentProvider.start(render.canvas);
-    const unsubscribe = currentProvider.subscribe(e => slingshot.handleInput(e));
+    const unsubscribe = currentProvider.subscribe(e => {
+      slingshot.handleInput(e);
+      sessionLogger.logFrame(phase, {
+        pullX: e.x,
+        pullY: e.y,
+        isPinching: e.type !== 'up' && e.type !== 'hover',
+        pinchRatio: e.pinchRatio,
+        score,
+        birdsLeft
+      });
+    });
 
     // ── Collision: bird hits target → make it dynamic so it falls ──────────
     function handleCollisions(event: Matter.IEventCollision<Matter.Engine>) {
@@ -277,11 +312,20 @@ export default function SlingshotGame({ inputProvider }: Props) {
         {isOver && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', zIndex: 20 }}>
             <div style={{ background: '#fff', borderRadius: 16, padding: '40px 56px', textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
-              <p style={{ fontSize: 32, fontWeight: 700, color: '#D62828', marginBottom: 8 }}>💀 Game Over</p>
-              <p style={{ fontSize: 16, color: '#555', marginBottom: 24 }}>Dianas: {gameState.score} / {TOTAL_TARGETS}</p>
-              <button onClick={handleReset} style={{ background: '#D62828', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 32px', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
-                Jugar de nuevo
-              </button>
+              {typeof window !== 'undefined' && window.location.search.includes('mode=test') ? (
+                <>
+                  <p style={{ fontSize: 24, fontWeight: 700, color: '#6366f1', marginBottom: 16 }}>Test completado</p>
+                  <p style={{ color: '#555', fontWeight: 500 }}>Guardando métricas... Siguiente prueba en breve.</p>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: 32, fontWeight: 700, color: '#D62828', marginBottom: 8 }}>💀 Game Over</p>
+                  <p style={{ fontSize: 16, color: '#555', marginBottom: 24 }}>Dianas: {gameState.score} / {TOTAL_TARGETS}</p>
+                  <button onClick={handleReset} style={{ background: '#D62828', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 32px', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
+                    Jugar de nuevo
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -290,11 +334,20 @@ export default function SlingshotGame({ inputProvider }: Props) {
         {isWin && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)', zIndex: 20 }}>
             <div style={{ background: '#fff', borderRadius: 16, padding: '40px 56px', textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
-              <p style={{ fontSize: 36, fontWeight: 700, color: '#52B788', marginBottom: 8 }}>🎉 ¡Todas las dianas!</p>
-              <p style={{ fontSize: 16, color: '#555', marginBottom: 24 }}>Con {5 - gameState.birdsLeft} aviones</p>
-              <button onClick={handleReset} style={{ background: '#52B788', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 32px', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
-                Jugar de nuevo
-              </button>
+              {typeof window !== 'undefined' && window.location.search.includes('mode=test') ? (
+                <>
+                  <p style={{ fontSize: 24, fontWeight: 700, color: '#6366f1', marginBottom: 16 }}>Test completado</p>
+                  <p style={{ color: '#555', fontWeight: 500 }}>Guardando métricas... Siguiente prueba en breve.</p>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: 36, fontWeight: 700, color: '#52B788', marginBottom: 8 }}>🎉 ¡Todas las dianas!</p>
+                  <p style={{ fontSize: 16, color: '#555', marginBottom: 24 }}>Con {5 - gameState.birdsLeft} aviones</p>
+                  <button onClick={handleReset} style={{ background: '#52B788', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 32px', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
+                    Jugar de nuevo
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
