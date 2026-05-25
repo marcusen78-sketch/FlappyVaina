@@ -229,22 +229,10 @@ export default function WaterGame() {
                 </svg>
               </Link>
             </div>
-            <div className="bg-white/80 backdrop-blur-md px-6 py-3 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-6">
-              <div className="flex flex-col items-end border-r border-slate-200 pr-6">
+            <div className="bg-white/80 backdrop-blur-md px-6 py-3 rounded-2xl shadow-sm border border-slate-100 flex items-center">
+              <div className="flex flex-col items-center">
                 <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Ronda</span>
                 <span className="text-2xl font-light text-slate-700 leading-none">{engineState.round} <span className="text-sm text-slate-400">/ 3</span></span>
-              </div>
-              {engineState.phase === "pouring" && (
-                <div className="flex flex-col items-end border-r border-slate-200 pr-6">
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Tiempo</span>
-                  <span className={`text-2xl font-light leading-none ${engineState.timeLeft <= 5 ? 'text-red-500 font-bold animate-pulse' : 'text-slate-700'}`}>
-                    {Math.max(0, Math.ceil(engineState.timeLeft))}s
-                  </span>
-                </div>
-              )}
-              <div className="flex flex-col items-end">
-                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Puntuación</span>
-                <span className="text-2xl font-light text-slate-700 leading-none">{engineState.score}</span>
               </div>
             </div>
           </div>
@@ -266,43 +254,16 @@ export default function WaterGame() {
                   ></div>
                 </div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 mt-2 block">
-                  {engineState.stabilityTimer > 0 ? "¡Mantén la posición!" : "Llena entre 80% y 100%"}
+                  {engineState.stabilityTimer > 0 ? "¡Mantén la posición!" : "Agua al vaso (Izq) | Veneno a la basura (Der)"}
                 </span>
               </div>
             )}
-
-            {/* Game Over / Success states */}
+            {/* Phase Success - Automatic Redirect to Menu */}
             {engineState.phase === "success" && (
               <div className="bg-white/95 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-slate-100 animate-in zoom-in-95">
-                <div className="w-16 h-16 bg-teal-50 text-teal-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-medium text-slate-800 mb-2">¡Partida Completada!</h2>
-                <button
-                  onClick={() => engineRef.current?.startLevel()}
-                  className="mt-6 w-full py-4 bg-slate-800 hover:bg-teal-500 text-white rounded-2xl font-medium tracking-wide transition-colors"
-                >
-                  Jugar de Nuevo
-                </button>
-              </div>
-            )}
-
-            {engineState.phase === "gameover" && (
-              <div className="bg-white/95 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl border border-slate-100 animate-in zoom-in-95">
-                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-medium text-slate-800 mb-2">Agua Derramada</h2>
-                <button
-                  onClick={() => engineRef.current?.startLevel()}
-                  className="mt-6 w-full py-4 bg-slate-800 hover:bg-indigo-600 text-white rounded-2xl font-medium tracking-wide transition-colors"
-                >
-                  Volver a Intentarlo
-                </button>
+                <h2 className="text-2xl font-medium text-slate-800 mb-2">¡Sesión Completada!</h2>
+                <p className="text-slate-500 font-light">Volviendo al menú principal...</p>
+                {setTimeout(() => { window.location.href = "/" }, 2000) && null}
               </div>
             )}
           </div>
